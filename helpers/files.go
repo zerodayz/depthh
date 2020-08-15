@@ -15,7 +15,7 @@ import (
 
 var wg sync.WaitGroup
 
-func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string) error {
+func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 1024*1024)
 		return lines
@@ -48,7 +48,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 		}
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter)
+			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority)
 			wg.Done()
 		}()
 	}
@@ -56,7 +56,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	return nil
 }
 
-func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string) {
+func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int) {
 	var wg2 sync.WaitGroup
 	var logCreationTimeString string
 
@@ -128,7 +128,9 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	logsSlice = nil
 }
 
-func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string ) {
+func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
+
+
 	var logDate, logProcessName, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
 	var filterCompiled = regexp.MustCompile(filter)
