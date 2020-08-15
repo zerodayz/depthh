@@ -15,7 +15,7 @@ import (
 
 var wg sync.WaitGroup
 
-func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, parserName, filter string) error {
+func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 1024*1024)
 		return lines

@@ -31,7 +31,6 @@ func init() {
 	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Shows entries older than the specified date." +
 		"Date should be of the format \"Aug 12 05:14:42\".")
 	parseCmd.Flags().StringVarP(&processName, "process", "p", "", "Show messages for the specified process.")
-	parseCmd.Flags().StringVar(&parserName, "parser", "generic", "Use specific parser to filter the output.")
 
 	parseCmd.MarkFlagRequired("file")
 
@@ -62,7 +61,7 @@ var parseCmd = &cobra.Command{
 			return
 		}
 
-		helpers.ParseFile(file, sinceTime, untilTime, processName, parserName, filter)
+		helpers.ParseFile(file, sinceTime, untilTime, processName, filter)
 		end := time.Now()
 		log.Println(end.Sub(start))
 	},
