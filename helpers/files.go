@@ -81,7 +81,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 
 		wg2.Add(1)
 		go func(s int, e int) {
-			defer wg2.Done() //to avaoid deadlocks
+			defer wg2.Done()
 			for i := s; i < e; i++ {
 				text := logsSlice[i]
 				if len(text) == 0 {
