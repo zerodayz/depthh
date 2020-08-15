@@ -27,7 +27,7 @@ func init() {
 	parseCmd.Flags().StringVarP(&filter, "filter", "F", "", "Filter output by message.")
 	parseCmd.Flags().StringVarP(&sinceTime, "since", "S", "" ,"Shows entries newer than the specified date. " +
 		"Date should be of the format \"Aug 5 17:58:06\".")
-	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Shows entries older than the specified date." +
+	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Shows entries older than the specified date. " +
 		"Date should be of the format \"Aug 12 05:14:42\".")
 	parseCmd.Flags().StringVarP(&processName, "process", "P", "", "Show messages for the specified process.")
 	parseCmd.Flags().IntVarP(&priority, "priority", "p", 7, "Filter output by message priority." +

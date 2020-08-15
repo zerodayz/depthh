@@ -17,7 +17,7 @@ var wg sync.WaitGroup
 
 func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int) error {
 	linesPool := sync.Pool{New: func() interface{} {
-		lines := make([]byte, 1024*1024)
+		lines := make([]byte, 250*1024)
 		return lines
 	}}
 
@@ -130,7 +130,6 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 
 func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
 
-
 	var logDate, logProcessName, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
 	var filterCompiled = regexp.MustCompile(filter)
@@ -144,6 +143,25 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
 	if tmp, ok := makeMap.Get("Message"); ok {
 		logMessage = tmp.(string)
 	}
+
+	// podman (remove date/time+stamp (rcernin)
+	podman := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+\s+[+-][0-9]+\s+UTC` +
+		`\s+m=[+-][0-9]+\.[0-9]+\s+`)
+	// hyperkube (remove date/time+stamp (rcernin)
+	hyperkube := regexp.MustCompile(
+		// 0805 17:54:15.628339
+		`[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+` +
+		`\s+[0-9]+` +
+		// panics.go:76]
+		`\s+[A-Za-z\.\_]+:[0-9]+\]`)
+
+	if logProcessName == "podman" {
+		logMessage = podman.ReplaceAllString(logMessage, "")
+	}
+	if logProcessName == "hyperkube" {
+		logMessage = hyperkube.ReplaceAllString(logMessage, "")
+	}
+
 	if processNameCompiled.MatchString(logProcessName) &&
 		filterCompiled.MatchString(logMessage) {
 		fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
