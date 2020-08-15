@@ -151,15 +151,21 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
 	hyperkube := regexp.MustCompile(
 		// 0805 17:54:15.628339
 		`[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+` +
-		`\s+[0-9]+` +
-		// panics.go:76]
-		`\s+[A-Za-z\.\_]+:[0-9]+\]`)
+			`\s+[0-9]+` +
+			// panics.go:76]
+			`\s+[A-Za-z\.\_]+:[0-9]+\]`)
+	hyperkube_INFO := regexp.MustCompile(
+		 `(\s+[A-Z]+\s+)` +
+			`([\/a-zA-Z0-9\-\%\?\=\&\.]+:\s\([0-9.a-zµ]+\)\s+[0-9]+\s+)` +
+			`\[.*\]\s` +
+			`([0-9\.\:]+)\]`)
 
 	if logProcessName == "podman" {
 		logMessage = podman.ReplaceAllString(logMessage, "")
 	}
-	if logProcessName == "hyperkube" {
+	if logProcessName == "hyperkube" || logProcessName == "atomic-openshift-master-api" || logProcessName == "atomic-openshift-node"{
 		logMessage = hyperkube.ReplaceAllString(logMessage, "")
+		logMessage = hyperkube_INFO.ReplaceAllString(logMessage, "${1}${2}${3}")
 	}
 
 	if processNameCompiled.MatchString(logProcessName) &&
