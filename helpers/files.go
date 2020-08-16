@@ -15,7 +15,7 @@ import (
 
 var wg sync.WaitGroup
 
-func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int) error {
+func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 250*1024)
 		return lines
@@ -48,7 +48,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 		}
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority)
+			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis)
 			wg.Done()
 		}()
 	}
@@ -56,7 +56,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	return nil
 }
 
-func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int) {
+func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) {
 	var wg2 sync.WaitGroup
 	var logCreationTimeString string
 
@@ -111,12 +111,11 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 
 				logCreationTime, err := time.Parse("Jan 2 15:04:05", logCreationTimeString)
 				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\". " + logCreationTimeString + Reset)
-					return
+					fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\":\n " + text + Reset)
 				}
 
 				if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
-					FilterLog(makeMap, processName, filter, priority)
+					FilterLog(makeMap, processName, filter, priority, analysis)
 				}
 			}
 
@@ -128,7 +127,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	logsSlice = nil
 }
 
-func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int) {
+func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int, analysis bool) {
 
 	var logDate, logProcessName, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
@@ -154,7 +153,7 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		`[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+` +
 			`\s+[0-9]+` +
 			// panics.go:76]
-			`\s+[A-Za-z\.\_]+:[0-9]+\]`)
+			`\s+[A-Za-z\.\_\-]+:[0-9]+\]`)
 
 	// hyperkube (remove un-needed information from informational messages (rcernin))
 	hyperkubeInfoFilter := regexp.MustCompile(
@@ -166,14 +165,18 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
 	hyperkubeTypeI := regexp.MustCompile(`^I\s+`)
 	hyperkubeTypeW := regexp.MustCompile(`^W\s+`)
-	hyperkubeTypeE := regexp.MustCompile(`^E\s+`)
+	hyperkubeTypeE := regexp.MustCompile(`^E\s+|^Error:\s+`)
 	hyperkubeTypeF := regexp.MustCompile(`^F\s+`)
 
+	// systemd (replace info, error messages)
+	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session)`)
+	systemdTypeF := regexp.MustCompile(`^(Failed)`)
+
 	// global messages
-	informationalMessage := regexp.MustCompile(`^INFO`)
+	informationalMessage := regexp.MustCompile(`^\[32mINFO`)
 	// warningMessage := regexp.MustCompile(`^WARNING`)
-	errorMessage := regexp.MustCompile(`^ERROR`)
-	fatalMessage := regexp.MustCompile(`^FATAL`)
+	errorMessage := regexp.MustCompile(`^\[31mERROR`)
+	fatalMessage := regexp.MustCompile(`^\[35mFATAL`)
 	debugMessage := regexp.MustCompile(`^DEBUG`)
 
 
@@ -183,18 +186,26 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
 	}
+	if logProcessName == "systemd" ||
+		logProcessName == "systemd-logind" {
+		// systemd ()
+		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO " + Reset + "${1}")
+		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL " + Reset + "${1}")
+
+	}
 	if logProcessName == "hyperkube" ||
 		logProcessName == "atomic-openshift-master-api" ||
-		logProcessName == "atomic-openshift-node" {
+		logProcessName == "atomic-openshift-node" ||
+		logProcessName == "machine-config-daemon" {
 		logMessage = hyperkubeDateTime.ReplaceAllString(logMessage, "")
 
 		// hyperkube (remove un-needed information from informational messages (rcernin))
 		logMessage = hyperkubeInfoFilter.ReplaceAllString(logMessage, "${1}${2}${3}")
 		// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, "INFO ")
-		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, "WARNING ")
-		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, "ERROR ")
-		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, "FATAL ")
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO " + Reset)
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING " + Reset)
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR " + Reset)
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL " + Reset)
 	}
 
 	if priority == 5 {
