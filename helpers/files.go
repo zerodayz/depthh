@@ -116,7 +116,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 				}
 
 				if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
-					FilterLog(makeMap, processName, filter)
+					FilterLog(makeMap, processName, filter, priority)
 				}
 			}
 
@@ -128,7 +128,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	logsSlice = nil
 }
 
-func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
+func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int) {
 
 	var logDate, logProcessName, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
@@ -144,29 +144,56 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string) {
 		logMessage = tmp.(string)
 	}
 
-	// podman (remove date/time+stamp (rcernin)
-	podman := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+\s+[+-][0-9]+\s+UTC` +
+	// podman (remove date/time+stamp (rcernin))
+	podmanDateTime := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+\s+[+-][0-9]+\s+UTC` +
 		`\s+m=[+-][0-9]+\.[0-9]+\s+`)
-	// hyperkube (remove date/time+stamp (rcernin)
-	hyperkube := regexp.MustCompile(
+
+	// hyperkube (remove date/time+stamp (rcernin))
+	hyperkubeDateTime := regexp.MustCompile(
 		// 0805 17:54:15.628339
 		`[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+` +
 			`\s+[0-9]+` +
 			// panics.go:76]
 			`\s+[A-Za-z\.\_]+:[0-9]+\]`)
-	hyperkube_INFO := regexp.MustCompile(
+
+	// hyperkube (remove un-needed information from informational messages (rcernin))
+	hyperkubeInfoFilter := regexp.MustCompile(
 		 `(\s+[A-Z]+\s+)` +
 			`([\/a-zA-Z0-9\-\%\?\=\&\.]+:\s\([0-9.a-zµ]+\)\s+[0-9]+\s+)` +
 			`\[.*\]\s` +
 			`([0-9\.\:]+)\]`)
 
+	// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
+	hyperkubeTypeI := regexp.MustCompile(`^I`)
+	hyperkubeTypeW := regexp.MustCompile(`^W`)
+	hyperkubeTypeE := regexp.MustCompile(`^E`)
+	hyperkubeTypeF := regexp.MustCompile(`^F`)
+
+	// Filter out Date + Time+stamp on each line
+	// because we keep the system Date + Time+stamp
+
 	if logProcessName == "podman" {
-		logMessage = podman.ReplaceAllString(logMessage, "")
+		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
 	}
-	if logProcessName == "hyperkube" || logProcessName == "atomic-openshift-master-api" || logProcessName == "atomic-openshift-node"{
-		logMessage = hyperkube.ReplaceAllString(logMessage, "")
-		logMessage = hyperkube_INFO.ReplaceAllString(logMessage, "${1}${2}${3}")
+	if logProcessName == "hyperkube" ||
+		logProcessName == "atomic-openshift-master-api" ||
+		logProcessName == "atomic-openshift-node" {
+		logMessage = hyperkubeDateTime.ReplaceAllString(logMessage, "")
+
+		// hyperkube (remove un-needed information from informational messages (rcernin))
+		logMessage = hyperkubeInfoFilter.ReplaceAllString(logMessage, "${1}${2}${3}")
+		// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, "INFO")
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, "WARNING")
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, "ERROR")
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, "FATAL")
 	}
+
+	//if priority == 5 {
+	//	if hyperkubeInfo.MatchString(logMessage) {
+	//		logMessage = hyperkubeRemoveType.ReplaceAllString(logMessage, "")
+	//		return }
+	//}
 
 	if processNameCompiled.MatchString(logProcessName) &&
 		filterCompiled.MatchString(logMessage) {
