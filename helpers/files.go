@@ -164,10 +164,10 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 			`([0-9\.\:]+)\]`)
 
 	// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-	hyperkubeTypeI := regexp.MustCompile(`^I`)
-	hyperkubeTypeW := regexp.MustCompile(`^W`)
-	hyperkubeTypeE := regexp.MustCompile(`^E`)
-	hyperkubeTypeF := regexp.MustCompile(`^F`)
+	hyperkubeTypeI := regexp.MustCompile(`^I\s+`)
+	hyperkubeTypeW := regexp.MustCompile(`^W\s+`)
+	hyperkubeTypeE := regexp.MustCompile(`^E\s+`)
+	hyperkubeTypeF := regexp.MustCompile(`^F\s+`)
 
 	// global messages
 	informationalMessage := regexp.MustCompile(`^INFO`)
@@ -191,12 +191,12 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		// hyperkube (remove un-needed information from informational messages (rcernin))
 		logMessage = hyperkubeInfoFilter.ReplaceAllString(logMessage, "${1}${2}${3}")
 		// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, "INFO")
-		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, "WARNING")
-		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, "ERROR")
-		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, "FATAL")
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, "INFO ")
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, "WARNING ")
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, "ERROR ")
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, "FATAL ")
 	}
-	
+
 	if priority == 5 {
 
 	} else if priority == 4 {
