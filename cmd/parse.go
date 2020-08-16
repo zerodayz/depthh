@@ -30,8 +30,8 @@ func init() {
 	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Shows entries older than the specified date. " +
 		"Date should be of the format \"Aug 12 05:14:42\".")
 	parseCmd.Flags().StringVarP(&processName, "process", "P", "", "Show messages for the specified process.")
-	parseCmd.Flags().IntVarP(&priority, "priority", "p", 7, "Filter output by message priority." +
-		"\"emerg\" (0), \"alert\" (1), \"crit\" (2), \"err\" (3), \"warning\" (4), \"notice\" (5), \"info\" (6), \"debug\" (7).")
+	parseCmd.Flags().IntVarP(&priority, "priority", "p", 5, "Filter output by message priority." +
+		"\"fatal\" (1), \"error\" (2), \"warning\" (3), \"info\" (4), \"debug\" (5).")
 	parseCmd.MarkFlagRequired("file")
 
 }

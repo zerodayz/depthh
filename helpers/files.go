@@ -169,9 +169,17 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	hyperkubeTypeE := regexp.MustCompile(`^E`)
 	hyperkubeTypeF := regexp.MustCompile(`^F`)
 
+	// global messages
+	informationalMessage := regexp.MustCompile(`^INFO`)
+	// warningMessage := regexp.MustCompile(`^WARNING`)
+	errorMessage := regexp.MustCompile(`^ERROR`)
+	fatalMessage := regexp.MustCompile(`^FATAL`)
+	debugMessage := regexp.MustCompile(`^DEBUG`)
+
+
+
 	// Filter out Date + Time+stamp on each line
 	// because we keep the system Date + Time+stamp
-
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
 	}
@@ -188,12 +196,29 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, "ERROR")
 		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, "FATAL")
 	}
+	
+	if priority == 5 {
 
-	//if priority == 5 {
-	//	if hyperkubeInfo.MatchString(logMessage) {
-	//		logMessage = hyperkubeRemoveType.ReplaceAllString(logMessage, "")
-	//		return }
-	//}
+	} else if priority == 4 {
+		if debugMessage.MatchString(logMessage) {
+			return
+		}
+	// priority 3 means warning, do not show info and debug messages
+	} else if priority == 3 {
+		if informationalMessage.MatchString(logMessage) || debugMessage.MatchString(logMessage) {
+			return
+		}
+	// priority 2 means error, do not show warning, info and debug messages
+	} else if priority == 2 {
+		if ! (fatalMessage.MatchString(logMessage) || errorMessage.MatchString(logMessage)) {
+			return
+		}
+	// priority 1 means fatal, do not show error, warning, info and debug messages
+	} else if priority == 1 {
+		if ! fatalMessage.MatchString(logMessage) {
+			return
+		}
+	}
 
 	if processNameCompiled.MatchString(logProcessName) &&
 		filterCompiled.MatchString(logMessage) {
