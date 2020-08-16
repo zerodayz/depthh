@@ -169,8 +169,10 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	hyperkubeTypeF := regexp.MustCompile(`^F\s+`)
 
 	// systemd (replace info, error messages)
-	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session)`)
+	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session|.*Consumed)`)
 	systemdTypeF := regexp.MustCompile(`^(Failed)`)
+	systemdTypeE := regexp.MustCompile(`^(.*Main process exited|.*Failed with result)`)
+
 
 	// global messages
 	informationalMessage := regexp.MustCompile(`^\[32mINFO`)
@@ -189,8 +191,9 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if logProcessName == "systemd" ||
 		logProcessName == "systemd-logind" {
 		// systemd ()
-		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO " + Reset + "${1}")
-		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL " + Reset + "${1}")
+		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ${1}")
+		logMessage = systemdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
 
 	}
 	if logProcessName == "hyperkube" ||
@@ -202,10 +205,10 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		// hyperkube (remove un-needed information from informational messages (rcernin))
 		logMessage = hyperkubeInfoFilter.ReplaceAllString(logMessage, "${1}${2}${3}")
 		// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO " + Reset)
-		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING " + Reset)
-		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR " + Reset)
-		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL " + Reset)
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ")
 	}
 
 	if priority == 5 {
@@ -231,8 +234,12 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		}
 	}
 
+	logSlice := strings.SplitN(logMessage, " ",2)
+
 	if processNameCompiled.MatchString(logProcessName) &&
-		filterCompiled.MatchString(logMessage) {
+		filterCompiled.MatchString(logSlice[1]) {
 		fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+	} else {
+		return
 	}
 }
