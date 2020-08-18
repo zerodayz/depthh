@@ -57,11 +57,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 }
 
 func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) {
-	var wg2 sync.WaitGroup
 	var logCreationTimeString string
-
-	makeMap := cmap.New()
-
 	logs := stringPool.Get().(string)
 	logs = string(chunk)
 
@@ -69,7 +65,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	logsSlice := strings.Split(logs, "\n")
 	stringPool.Put(logs)
 
-	chunkSize := 300
+	chunkSize := 2000
 	n := len(logsSlice)
 	noOfThread := n / chunkSize
 
@@ -77,53 +73,45 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 		noOfThread++
 	}
 
+	makeMap := cmap.New()
 	for i := 0; i < (noOfThread); i++ {
+		for i := i*chunkSize; i < int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice)))); i++ {
+			text := logsSlice[i]
+			if len(text) == 0 {
+				continue
+			}
 
-		wg2.Add(1)
-		go func(s int, e int) {
-			defer wg2.Done()
-			for i := s; i < e; i++ {
-				text := logsSlice[i]
-				if len(text) == 0 {
-					continue
-				}
+			logLine := regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
+				`\s+[0-9]+:[0-9]+:[0-9]+)` +
+				`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
+				`\s+(?P<ProcessName>[0-9A-Za-z\.\-]*)` +
+				`(\[)?` +
+				`(?P<ProcessPID>[0-9]+)?` +
+				`(\])?:` +
+				`\s+(?P<Message>.*)`)
 
-				logLine := regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
-					`\s+[0-9]+:[0-9]+:[0-9]+)` +
-					`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
-					`\s+(?P<ProcessName>[0-9A-Za-z\.\-]*)` +
-					`(\[)?` +
-					`(?P<ProcessPID>[0-9]+)?` +
-					`(\])?:` +
-					`\s+(?P<Message>.*)`)
+			match := logLine.FindStringSubmatch(text)
 
-				match := logLine.FindStringSubmatch(text)
-
-				for i, name := range logLine.SubexpNames() {
-					if i > 0 && i <= len(match) {
-						makeMap.Set(name, match[i])
-					}
-				}
-
-				if tmp, ok := makeMap.Get("Date"); ok {
-					logCreationTimeString = tmp.(string)
-				}
-
-				logCreationTime, err := time.Parse("Jan 2 15:04:05", logCreationTimeString)
-				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\":\n " + text + Reset)
-				}
-
-				if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
-					FilterLog(makeMap, processName, filter, priority, analysis)
+			for i, name := range logLine.SubexpNames() {
+				if i > 0 && i <= len(match) {
+					makeMap.Set(name, match[i])
 				}
 			}
 
+			if tmp, ok := makeMap.Get("Date"); ok {
+				logCreationTimeString = tmp.(string)
+			}
 
-		}(i*chunkSize, int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice)))))
+			logCreationTime, err := time.Parse("Jan 2 15:04:05", logCreationTimeString)
+			if err != nil {
+				fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\":\n " + text + Reset)
+			}
+
+			if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
+				FilterLog(makeMap, processName, filter, priority, analysis)
+			}
+		}
 	}
-
-	wg2.Wait()
 	logsSlice = nil
 }
 
@@ -167,12 +155,24 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	hyperkubeTypeW := regexp.MustCompile(`^W\s+`)
 	hyperkubeTypeE := regexp.MustCompile(`^E\s+|^Error:\s+`)
 	hyperkubeTypeF := regexp.MustCompile(`^F\s+`)
+	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt)`)
 
 	// systemd (replace info, error messages)
 	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session|.*Consumed)`)
 	systemdTypeF := regexp.MustCompile(`^(Failed)`)
 	systemdTypeE := regexp.MustCompile(`^(.*Main process exited|.*Failed with result)`)
 
+	// dhclient (replace info, error message)
+	dhclientTypeI := regexp.MustCompile(`^(DHCPREQUEST|DHCPACK|bound to)`)
+
+	// etcd
+	etcdTypeW := regexp.MustCompile(`^(health check for peer.*connect:.*connection refused)`)
+
+	// podman
+	podmanTypeI := regexp.MustCompile(`^(container)`)
+
+	// NetworkManager
+	networkManagerTypeI := regexp.MustCompile(`^(<info>)`)
 
 	// global messages
 	informationalMessage := regexp.MustCompile(`^\[32mINFO`)
@@ -181,12 +181,12 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	fatalMessage := regexp.MustCompile(`^\[35mFATAL`)
 	debugMessage := regexp.MustCompile(`^DEBUG`)
 
-
-
 	// Filter out Date + Time+stamp on each line
 	// because we keep the system Date + Time+stamp
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
+		logMessage = podmanTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+
 	}
 	if logProcessName == "systemd" ||
 		logProcessName == "systemd-logind" {
@@ -194,6 +194,16 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ${1}")
 		logMessage = systemdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
+
+	}
+	if logProcessName == "etcd" {
+		logMessage = etcdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+	}
+	if logProcessName == "dhclient" {
+		logMessage = dhclientTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
+	if logProcessName == "NetworkManager" {
+		logMessage = networkManagerTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 
 	}
 	if logProcessName == "hyperkube" ||
@@ -209,6 +219,7 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
 		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
 		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ")
+		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 	}
 
 	if priority == 5 {
@@ -235,11 +246,20 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	}
 
 	logSlice := strings.SplitN(logMessage, " ",2)
-
-	if processNameCompiled.MatchString(logProcessName) &&
-		filterCompiled.MatchString(logSlice[1]) {
-		fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+	if len(logSlice) >= 2 {
+		if processNameCompiled.MatchString(logProcessName) &&
+			filterCompiled.MatchString(logSlice[1]) {
+			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+		} else {
+			return
+		}
 	} else {
-		return
+		if processNameCompiled.MatchString(logProcessName) &&
+			filterCompiled.MatchString(logSlice[0]) {
+			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+		} else {
+			return
+		}
 	}
+
 }
