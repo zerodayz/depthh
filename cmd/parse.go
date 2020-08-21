@@ -50,7 +50,12 @@ var parseCmd = &cobra.Command{
 			fmt.Println("Unable to read the file.", err)
 			return
 		}
-		defer file.Close()
+
+		defer func() {
+			if err := file.Close(); err != nil {
+				return
+			}
+		}()
 
 		sinceTime, err := time.Parse("Jan 2 15:04:05", sinceTime)
 		if err != nil {
@@ -63,7 +68,11 @@ var parseCmd = &cobra.Command{
 			return
 		}
 
-		helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis)
+		err = helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis)
+		if err != nil {
+			return
+		}
+
 		end := time.Now()
 		log.Println(end.Sub(start))
 	},

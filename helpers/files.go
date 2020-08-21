@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-var wg sync.WaitGroup
-
 func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 250*1024)
@@ -113,8 +111,8 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 				logLine = podsLogLine
 				if addYear {
 					year := time.Now().UTC().Year()
-					sinceTime = sinceTime.AddDate(int(year),0, 0)
-					untilTime = sinceTime.AddDate(int(year),0, 0)
+					sinceTime = sinceTime.AddDate(year,0, 0)
+					untilTime = sinceTime.AddDate(year,0, 0)
 					addYear = false
 				}
 
@@ -188,8 +186,8 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 			`([0-9\.\:]+)\]`)
 
 	// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-	hyperkubeTypeI := regexp.MustCompile(`^I\s+|^\[INFO\]\s+|^\[\+\]`)
-	hyperkubeTypeW := regexp.MustCompile(`^W\s+|^\[-\]`)
+	hyperkubeTypeI := regexp.MustCompile(`^I\s+|^\[INFO]\s+|^\[\+]`)
+	hyperkubeTypeW := regexp.MustCompile(`^W\s+|^\[-]`)
 	hyperkubeTypeE := regexp.MustCompile(`^E\s+|^Error:\s+`)
 	hyperkubeTypeF := regexp.MustCompile(`^F\s+|^C\s+`)
 	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt|, Header)`)
@@ -209,8 +207,8 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	podmanTypeI := regexp.MustCompile(`^(container)`)
 
 	// podlog process
-	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-\/\.\_]+):.*`)
-	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-\/\.\_]+):`)
+	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-/._]+):.*`)
+	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-/._]+):`)
 
 	// NetworkManager
 	networkManagerTypeI := regexp.MustCompile(`^(<info>)`)
