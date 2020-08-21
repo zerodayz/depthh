@@ -1,4 +1,4 @@
-module github.com/zerodayz/virus
+module github.com/zerodayz/depthh
 
 go 1.14
 

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/zerodayz/virus/helpers"
+	"github.com/zerodayz/depthh/helpers"
 	"log"
 	"os"
 	"time"

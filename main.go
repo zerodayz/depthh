@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/zerodayz/virus/cmd"
+	"github.com/zerodayz/depthh/cmd"
 )
 
 func main() {

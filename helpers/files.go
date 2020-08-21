@@ -65,7 +65,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	logsSlice := strings.Split(logs, "\n")
 	stringPool.Put(logs)
 
-	chunkSize := 2000
+	chunkSize := 4000
 	n := len(logsSlice)
 	noOfThread := n / chunkSize
 

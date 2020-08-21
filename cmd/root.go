@@ -7,9 +7,9 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "virus",
-	Short: "Virus is a tool",
-	Long: `Project documentation is available at http://github.com/zerodayz/virus`,
+	Use:   "depthh",
+	Short: "Depthh is a tool",
+	Long: `Project documentation is available at http://github.com/zerodayz/depthh`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Do Stuff Here
 	},
