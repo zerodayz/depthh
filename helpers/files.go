@@ -87,8 +87,8 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 
 			if podLogs {
 				// 2020-08-14T02:46:41.537460623Z 2020-08-14 02:46:41.537423 I | mvcc: store.index: compact 1535691
-				logLine = regexp.MustCompile(`^(?P<Date>[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+\.[0-9]+Z)\s` +
-					`([0-9]+-[0-9]+-[0-9]+\s[0-9]+:[0-9]+:[0-9]+.[0-9]+\s)?` +
+				logLine = regexp.MustCompile(`^(?P<Date>[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+\.[0-9]+Z)\s+` +
+					`([0-9]+-[0-9]+-[0-9]+\s[0-9]+:[0-9]+:[0-9]+.[0-9]+\s+)?` +
 					`(?P<Message>.*)`)
 			} else {
 				logLine = regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
@@ -170,7 +170,7 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	hyperkubeTypeI := regexp.MustCompile(`^I\s+|^\[INFO\]\s+`)
 	hyperkubeTypeW := regexp.MustCompile(`^W\s+`)
 	hyperkubeTypeE := regexp.MustCompile(`^E\s+|^Error:\s+`)
-	hyperkubeTypeF := regexp.MustCompile(`^F\s+|C\s+`)
+	hyperkubeTypeF := regexp.MustCompile(`^F\s+|^C\s+`)
 	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt)`)
 
 	// systemd (replace info, error messages)
@@ -186,6 +186,10 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 
 	// podman
 	podmanTypeI := regexp.MustCompile(`^(container)`)
+
+	// podlog process
+	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-\/\.\_]+):.*`)
+	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-\/\.\_]+):`)
 
 	// NetworkManager
 	networkManagerTypeI := regexp.MustCompile(`^(<info>)`)
@@ -241,6 +245,12 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if podLogs {
 		// pod logs (replace IWEF with INFO/WARN/ERR/FATAL)
 		logMessage = hyperkubeDateTime.ReplaceAllString(logMessage, "")
+		if podLogsProcessName.MatchString(logMessage) {
+			logProcessName = podLogsProcessName.ReplaceAllString(logMessage, "${1}")
+			logMessage = podLogsRemoveProcessName.ReplaceAllString(logMessage, "")
+		} else {
+			logProcessName = ""
+		}
 		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
 		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
 		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
@@ -269,37 +279,22 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 			return
 		}
 	}
-	if podLogs {
-		logSlice := strings.SplitN(logMessage, " ",2)
-		if len(logSlice) >= 2 {
-			if filterCompiled.MatchString(logSlice[1]) {
-				fmt.Println(Blue + logDate + Reset + " " + " " + logMessage)
-			} else {
-				return
-			}
+
+	logSlice := strings.SplitN(logMessage, " ",2)
+	if len(logSlice) >= 2 {
+		if processNameCompiled.MatchString(logProcessName) &&
+			filterCompiled.MatchString(logSlice[1]) {
+			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
 		} else {
-			if filterCompiled.MatchString(logSlice[0]) {
-				fmt.Println(Blue + logDate + Reset + " " + " " + logMessage)
-			} else {
-				return
-			}
+			return
 		}
 	} else {
-		logSlice := strings.SplitN(logMessage, " ",2)
-		if len(logSlice) >= 2 {
-			if processNameCompiled.MatchString(logProcessName) &&
-				filterCompiled.MatchString(logSlice[1]) {
-				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
-			} else {
-				return
-			}
+		if processNameCompiled.MatchString(logProcessName) &&
+			filterCompiled.MatchString(logSlice[0]) {
+			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
 		} else {
-			if processNameCompiled.MatchString(logProcessName) &&
-				filterCompiled.MatchString(logSlice[0]) {
-				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
-			} else {
-				return
-			}
+			return
 		}
 	}
+
 }
