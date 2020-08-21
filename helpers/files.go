@@ -167,11 +167,11 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 			`([0-9\.\:]+)\]`)
 
 	// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-	hyperkubeTypeI := regexp.MustCompile(`^I\s+|^\[INFO\]\s+`)
-	hyperkubeTypeW := regexp.MustCompile(`^W\s+`)
+	hyperkubeTypeI := regexp.MustCompile(`^I\s+|^\[INFO\]\s+|^\[\+\]`)
+	hyperkubeTypeW := regexp.MustCompile(`^W\s+|^\[-\]`)
 	hyperkubeTypeE := regexp.MustCompile(`^E\s+|^Error:\s+`)
 	hyperkubeTypeF := regexp.MustCompile(`^F\s+|^C\s+`)
-	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt)`)
+	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt|, Header)`)
 
 	// systemd (replace info, error messages)
 	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session|.*Consumed)`)
@@ -255,6 +255,7 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
 		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
 		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ")
+		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 	}
 
 	if priority == 5 {
