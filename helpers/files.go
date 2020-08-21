@@ -15,7 +15,7 @@ import (
 
 var wg sync.WaitGroup
 
-func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, podLogs bool) error {
+func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 250*1024)
 		return lines
@@ -27,6 +27,8 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	}}
 	r := bufio.NewReader(file)
 	var wg sync.WaitGroup
+
+	addYear := true
 
 	for {
 		buf := linesPool.Get().([]byte)
@@ -48,7 +50,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 		}
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, podLogs)
+			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, addYear)
 			wg.Done()
 		}()
 	}
@@ -56,11 +58,12 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	return nil
 }
 
-func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, podLogs bool) {
+func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, addYear bool) {
 	var logCreationTimeString string
 	var logLine *regexp.Regexp
 	var logCreationTime time.Time
 	var err error
+	var podLogs bool
 
 	logs := stringPool.Get().(string)
 	logs = string(chunk)
@@ -84,14 +87,10 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 			if len(text) == 0 {
 				continue
 			}
-
-			if podLogs {
-				// 2020-08-14T02:46:41.537460623Z 2020-08-14 02:46:41.537423 I | mvcc: store.index: compact 1535691
-				logLine = regexp.MustCompile(`^(?P<Date>[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+\.[0-9]+Z)\s+` +
+			podsLogLine := regexp.MustCompile(`^(?P<Date>[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+\.[0-9]+Z)\s+` +
 					`([0-9]+-[0-9]+-[0-9]+\s[0-9]+:[0-9]+:[0-9]+.[0-9]+\s+)?` +
 					`(?P<Message>.*)`)
-			} else {
-				logLine = regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
+			systemLogLine := regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
 					`\s+[0-9]+:[0-9]+:[0-9]+)` +
 					`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
 					`\s+(?P<ProcessName>[0-9A-Za-z\.\-]*)` +
@@ -99,31 +98,54 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 					`(?P<ProcessPID>[0-9]+)?` +
 					`(\])?:` +
 					`\s+(?P<Message>.*)`)
-			}
 
-			match := logLine.FindStringSubmatch(text)
+			if systemLogLine.MatchString(text) {
+				logLine = systemLogLine
 
-			for i, name := range logLine.SubexpNames() {
-				if i > 0 && i <= len(match) {
-					makeMap.Set(name, match[i])
+				match := logLine.FindStringSubmatch(text)
+				for i, name := range logLine.SubexpNames() {
+					if i > 0 && i <= len(match) {
+						makeMap.Set(name, match[i])
+					}
 				}
+			} else if podsLogLine.MatchString(text) {
+				podLogs = true
+				logLine = podsLogLine
+				if addYear {
+					year := time.Now().UTC().Year()
+					sinceTime = sinceTime.AddDate(int(year),0, 0)
+					untilTime = sinceTime.AddDate(int(year),0, 0)
+					addYear = false
+				}
+
+				match := logLine.FindStringSubmatch(text)
+
+				for i, name := range logLine.SubexpNames() {
+					if i > 0 && i <= len(match) {
+						makeMap.Set(name, match[i])
+					}
+				}
+			} else {
+				fmt.Println(Red + "Unable to parse text:\n " + text + Reset)
 			}
+
 
 			if tmp, ok := makeMap.Get("Date"); ok {
 				logCreationTimeString = tmp.(string)
 			}
 
-			if podLogs {
+			if podLogs == true {
 				logCreationTime, err = time.Parse("2006-01-02T15:04:05.999999999Z", logCreationTimeString)
 				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\":\n " + text + Reset)
+					fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
 				}
 			} else {
 				logCreationTime, err = time.Parse("Jan 2 15:04:05", logCreationTimeString)
 				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format. Date should be of the format \"Aug 5 17:58:06\":\n " + text + Reset)
+					fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
 				}
 			}
+
 			if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
 				FilterLog(makeMap, processName, filter, priority, analysis, podLogs)
 			}
@@ -146,7 +168,6 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if tmp, ok := makeMap.Get("Message"); ok {
 		logMessage = tmp.(string)
 	}
-
 	// podman (remove date/time+stamp (rcernin))
 	podmanDateTime := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+\s+[+-][0-9]+\s+UTC` +
 		`\s+m=[+-][0-9]+\.[0-9]+\s+`)
@@ -280,7 +301,6 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 			return
 		}
 	}
-
 	logSlice := strings.SplitN(logMessage, " ",2)
 	if len(logSlice) >= 2 {
 		if processNameCompiled.MatchString(logProcessName) &&

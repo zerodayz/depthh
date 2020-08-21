@@ -16,7 +16,6 @@ var (
 	processName string
 	priority int
 	analysis bool
-	podLogs bool
 	sinceTime string
 	untilTime string
 )
@@ -35,7 +34,6 @@ func init() {
 	parseCmd.Flags().IntVarP(&priority, "priority", "p", 5, "Filter output by message priority." +
 		"\"fatal\" (1), \"error\" (2), \"warning\" (3), \"info\" (4), \"debug\" (5).")
 	parseCmd.Flags().BoolVarP(&analysis, "analysis", "A", false, "Run analysis on the specified date and logfile.")
-	parseCmd.Flags().BoolVar(&podLogs, "pod-logs", false, "Date and format to match the one in the pod logs.")
 	parseCmd.MarkFlagRequired("file")
 
 }
@@ -65,12 +63,7 @@ var parseCmd = &cobra.Command{
 			return
 		}
 
-		if podLogs {
-			year := time.Now().UTC().Year()
-			sinceTime = sinceTime.AddDate(int(year),0, 0)
-			untilTime = sinceTime.AddDate(int(year),0, 0)
-		}
-		helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis, podLogs)
+		helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis)
 		end := time.Now()
 		log.Println(end.Sub(start))
 	},
