@@ -199,6 +199,9 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	var logDate, logProcessName, logHostname, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
 	var filterCompiled = regexp.MustCompile(filter)
+	var lastAppearanceTime time.Time
+	var firstAppearanceTime time.Time
+	var logDateTime time.Time
 
 	if tmp, ok := makeMap.Get("Date"); ok {
 		logDate = tmp.(string)
@@ -256,7 +259,10 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	etcdTypeW := regexp.MustCompile(`^(health check for peer.*connect:.*connection refused)`)
 	// sssd_be
 	sssdbeTypeI := regexp.MustCompile(`^(GSSAPI client step)`)
-
+	// sshd
+	sshdTypeI := regexp.MustCompile(`^(Connection from|Close session|` +
+		`Starting session|Did not receive identification|Postponed publickey|` +
+		`Accepted publickey|Received disconnect|Disconnected|User child is on|pam_unix)`)
 	// podman
 	podmanTypeI := regexp.MustCompile(`^(container)`)
 
@@ -302,6 +308,9 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	if logProcessName == "crond" {
 		logMessage = crondTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+	}
+	if logProcessName == "sshd" {
+		logMessage = sshdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 	}
 	if logProcessName == "sssd_be" {
 		logMessage = sssdbeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
@@ -432,18 +441,26 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 						}
 						if v, ok := nested.Get("Last Appearance"); ok {
 							lastAppearance := v.(string)
-							lastAppearanceTime, _ := time.Parse("Jan 2 15:04:05", lastAppearance)
-							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
-
+							if podLogs == true {
+								lastAppearanceTime, _ = time.Parse("2006-01-02T15:04:05.999999999Z", lastAppearance)
+								logDateTime, _ = time.Parse("2006-01-02T15:04:05.999999999Z", logDate)
+							} else {
+								lastAppearanceTime, _ = time.Parse("Jan 2 15:04:05", lastAppearance)
+								logDateTime, _ = time.Parse("Jan 2 15:04:05", logDate)
+							}
 							if logDateTime.After(lastAppearanceTime) {
 								nested.Set("Last Appearance", logDate)
 							}
 						}
 						if v, ok := nested.Get("First Appearance"); ok {
 							firstAppearance := v.(string)
-							firstAppearanceTime, _ := time.Parse("Jan 2 15:04:05", firstAppearance)
-							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
-
+							if podLogs == true {
+								firstAppearanceTime, _ = time.Parse("2006-01-02T15:04:05.999999999Z", firstAppearance)
+								logDateTime, _ = time.Parse("2006-01-02T15:04:05.999999999Z", logDate)
+							} else {
+								firstAppearanceTime, _ = time.Parse("Jan 2 15:04:05", firstAppearance)
+								logDateTime, _ = time.Parse("Jan 2 15:04:05", logDate)
+							}
 							if logDateTime.Before(firstAppearanceTime) {
 								nested.Set("First Appearance", logDate)
 							}
