@@ -14,8 +14,10 @@ var (
 	fileName string
 	filter string
 	processName string
+	showHostname bool
 	priority int
 	analysis bool
+	ignoreErrors bool
 	sinceTime string
 	untilTime string
 )
@@ -33,7 +35,9 @@ func init() {
 	parseCmd.Flags().StringVarP(&processName, "process", "P", "", "Show messages for the specified process.")
 	parseCmd.Flags().IntVarP(&priority, "priority", "p", 5, "Filter output by message priority." +
 		"\"fatal\" (1), \"error\" (2), \"warning\" (3), \"info\" (4), \"debug\" (5).")
+	parseCmd.Flags().BoolVarP(&showHostname, "show-hostname", "H", false, "Show hostname along the messages.")
 	parseCmd.Flags().BoolVarP(&analysis, "analysis", "A", false, "Run analysis on the specified date and logfile.")
+	parseCmd.Flags().BoolVarP(&ignoreErrors, "ignore-errors", "I", false, "Ignore parsing errors.")
 	parseCmd.MarkFlagRequired("file")
 
 }
@@ -68,7 +72,7 @@ var parseCmd = &cobra.Command{
 			return
 		}
 
-		err = helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis)
+		err = helpers.ParseFile(file, sinceTime, untilTime, processName, filter, priority, analysis, ignoreErrors, showHostname)
 		if err != nil {
 			return
 		}

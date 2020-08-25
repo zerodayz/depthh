@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis bool) error {
+func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, ignoreErrors, showHostname bool) error {
 	linesPool := sync.Pool{New: func() interface{} {
 		lines := make([]byte, 250*1024)
 		return lines
@@ -48,7 +48,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 		}
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, addYear)
+			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, ignoreErrors, showHostname, addYear)
 			wg.Done()
 		}()
 	}
@@ -56,7 +56,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	return nil
 }
 
-func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, addYear bool) {
+func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, ignoreErrors, showHostname, addYear bool) {
 	var logCreationTimeString string
 	var logLine *regexp.Regexp
 	var logCreationTime time.Time
@@ -91,7 +91,7 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 			systemLogLine := regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
 					`\s+[0-9]+:[0-9]+:[0-9]+)` +
 					`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
-					`\s+(?P<ProcessName>[0-9A-Za-z\.\-]*)` +
+					`\s+(?P<ProcessName>[0-9A-Za-z\._()/\-]*)` +
 					`(\[)?` +
 					`(?P<ProcessPID>[0-9]+)?` +
 					`(\])?:` +
@@ -124,7 +124,9 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 					}
 				}
 			} else {
-				fmt.Println(Red + "Unable to parse text:\n " + text + Reset)
+				if ignoreErrors == false {
+					fmt.Println(Red + "Unable to parse text:\n " + text + Reset)
+				}
 			}
 
 
@@ -135,30 +137,39 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 			if podLogs == true {
 				logCreationTime, err = time.Parse("2006-01-02T15:04:05.999999999Z", logCreationTimeString)
 				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
+					if ignoreErrors == false {
+						fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
+					}
 				}
 			} else {
 				logCreationTime, err = time.Parse("Jan 2 15:04:05", logCreationTimeString)
 				if err != nil {
-					fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
+					if ignoreErrors == false {
+						fmt.Println(Red + "Unable to parse date and time format:\n " + text + Reset)
+					}
 				}
 			}
 
 			if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
-				FilterLog(makeMap, processName, filter, priority, analysis, podLogs)
+				FilterLog(makeMap, processName, filter, priority, analysis, showHostname, podLogs)
 			}
 		}
 	}
 	logsSlice = nil
 }
 
-func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int, analysis, podLogs bool) {
-	var logDate, logProcessName, logMessage string
+func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int, analysis, showHostname, podLogs bool) {
+	var logDate, logProcessName, logHostname, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
 	var filterCompiled = regexp.MustCompile(filter)
 
 	if tmp, ok := makeMap.Get("Date"); ok {
 		logDate = tmp.(string)
+	}
+	if showHostname {
+		if tmp, ok := makeMap.Get("Hostname"); ok {
+			logHostname = tmp.(string)
+		}
 	}
 	if tmp, ok := makeMap.Get("ProcessName"); ok {
 		logProcessName = tmp.(string)
@@ -303,14 +314,22 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if len(logSlice) >= 2 {
 		if processNameCompiled.MatchString(logProcessName) &&
 			filterCompiled.MatchString(logSlice[1]) {
-			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			if showHostname {
+				fmt.Println(Blue + logDate + Reset + " " + Cyan + logHostname + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			} else {
+				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			}
 		} else {
 			return
 		}
 	} else {
 		if processNameCompiled.MatchString(logProcessName) &&
 			filterCompiled.MatchString(logSlice[0]) {
-			fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			if showHostname {
+				fmt.Println(Blue + logDate + Reset + " " + Cyan + logHostname + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			} else {
+				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			}
 		} else {
 			return
 		}
