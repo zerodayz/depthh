@@ -27,6 +27,7 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 	var wg sync.WaitGroup
 
 	addYear := true
+	var analysisDataMap = cmap.New()
 
 	for {
 		buf := linesPool.Get().([]byte)
@@ -48,15 +49,49 @@ func ParseFile(file *os.File, sinceTime, untilTime time.Time, processName, filte
 		}
 		wg.Add(1)
 		go func() {
-			ProcessChunk(buf, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, ignoreErrors, showHostname, addYear)
+			ProcessChunk(buf, analysisDataMap, &linesPool, &stringPool, sinceTime, untilTime, processName, filter, priority, analysis, ignoreErrors, showHostname, addYear)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
+	if analysis {
+		fmt.Printf(Red + "\n\t\tANALYSIS SECTION\n" + Reset)
+		for _, name := range analysisDataMap.Keys() {
+			fmt.Printf("\n")
+			fmt.Println(Purple + "Hostname:" + Reset + " " + Cyan + name + Reset)
+			if tmp, ok := analysisDataMap.Get(name); ok {
+				nested := tmp.(cmap.ConcurrentMap)
+				for _, name := range nested.Keys() {
+					fmt.Printf("\n")
+					fmt.Println(Purple + "    Message:" + Reset + " " + name)
+					if tmp, ok := nested.Get(name); ok {
+						nested := tmp.(cmap.ConcurrentMap)
+						if tmp, ok := nested.Get("Process Name"); ok {
+							fmt.Printf(Purple + "    Process Name" + ":" + Reset + " ")
+							fmt.Println(tmp.(string))
+						}
+						if tmp, ok := nested.Get("First Appearance"); ok {
+							fmt.Printf(Purple + "    First Appearance" + ":" + Reset + " ")
+							fmt.Println(tmp.(string))
+						}
+						if tmp, ok := nested.Get("Last Appearance"); ok {
+							fmt.Printf(Purple + "    Last Appearance" + ":" + Reset + " ")
+							fmt.Println(tmp.(string))
+						}
+						if tmp, ok := nested.Get("Count"); ok {
+							fmt.Printf(Purple + "    Count" + ":" + Reset + " ")
+							fmt.Println(tmp.(int))
+						}
+					}
+				}
+			}
+		}
+		fmt.Printf("\n")
+	}
 	return nil
 }
 
-func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, ignoreErrors, showHostname, addYear bool) {
+func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, stringPool *sync.Pool, sinceTime, untilTime time.Time, processName, filter string, priority int, analysis, ignoreErrors, showHostname, addYear bool) {
 	var logCreationTimeString string
 	var logLine *regexp.Regexp
 	var logCreationTime time.Time
@@ -79,6 +114,8 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 	}
 
 	makeMap := cmap.New()
+
+
 	for i := 0; i < (noOfThread); i++ {
 		for i := i*chunkSize; i < int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice)))); i++ {
 			text := logsSlice[i]
@@ -151,14 +188,14 @@ func ProcessChunk(chunk []byte, linesPool, stringPool *sync.Pool, sinceTime, unt
 			}
 
 			if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
-				FilterLog(makeMap, processName, filter, priority, analysis, showHostname, podLogs)
+				FilterLog(makeMap, analysisDataMap, processName, filter, priority, analysis, showHostname, podLogs)
 			}
 		}
 	}
 	logsSlice = nil
 }
 
-func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority int, analysis, showHostname, podLogs bool) {
+func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter string, priority int, analysis, showHostname, podLogs bool) {
 	var logDate, logProcessName, logHostname, logMessage string
 	var processNameCompiled = regexp.MustCompile(processName)
 	var filterCompiled = regexp.MustCompile(filter)
@@ -166,10 +203,8 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if tmp, ok := makeMap.Get("Date"); ok {
 		logDate = tmp.(string)
 	}
-	if showHostname {
-		if tmp, ok := makeMap.Get("Hostname"); ok {
+	if tmp, ok := makeMap.Get("Hostname"); ok {
 			logHostname = tmp.(string)
-		}
 	}
 	if tmp, ok := makeMap.Get("ProcessName"); ok {
 		logProcessName = tmp.(string)
@@ -211,8 +246,16 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	// dhclient (replace info, error message)
 	dhclientTypeI := regexp.MustCompile(`^(DHCPREQUEST|DHCPACK|bound to)`)
 
+	// dnsmasq
+	dnsmasqTypeI := regexp.MustCompile(`^(using nameserver|setting upstream servers)`)
+	// crond
+	crondTypeI := regexp.MustCompile(`^(PAM adding)`)
+	crondTypeW := regexp.MustCompile(`^(PAM unable to dlopen)`)
+
 	// etcd
 	etcdTypeW := regexp.MustCompile(`^(health check for peer.*connect:.*connection refused)`)
+	// sssd_be
+	sssdbeTypeI := regexp.MustCompile(`^(GSSAPI client step)`)
 
 	// podman
 	podmanTypeI := regexp.MustCompile(`^(container)`)
@@ -255,6 +298,16 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 	if logProcessName == "NetworkManager" {
 		logMessage = networkManagerTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 
+	}
+	if logProcessName == "crond" {
+		logMessage = crondTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+	}
+	if logProcessName == "sssd_be" {
+		logMessage = sssdbeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
+	if logProcessName == "dnsmasq" {
+		logMessage = dnsmasqTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 	}
 	if logProcessName == "hyperkube" ||
 		logProcessName == "atomic-openshift-master-api" ||
@@ -311,6 +364,7 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 		}
 	}
 	logSlice := strings.SplitN(logMessage, " ",2)
+
 	if len(logSlice) >= 2 {
 		if processNameCompiled.MatchString(logProcessName) &&
 			filterCompiled.MatchString(logSlice[1]) {
@@ -318,6 +372,84 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 				fmt.Println(Blue + logDate + Reset + " " + Cyan + logHostname + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
 			} else {
 				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			}
+			if analysis {
+				if v, ok := analysisDataMap.Get(logHostname); !ok {
+					analysisDataMap.Set(logHostname, cmap.New())
+					if v, ok := analysisDataMap.Get(logHostname); ok {
+						nested := v.(cmap.ConcurrentMap)
+						if _, ok := nested.Get(logMessage); !ok {
+							nested.Set(logMessage, cmap.New())
+							if v, ok := nested.Get(logMessage); ok {
+								nested := v.(cmap.ConcurrentMap)
+								if _, ok := nested.Get("Count"); !ok {
+									// Setting initial count for first message per host
+									nested.Set("Count", 1)
+								}
+								if _, ok := nested.Get("Process Name"); !ok {
+									// Setting process name for first message per host
+									nested.Set("Process Name", logProcessName)
+								}
+								if _, ok := nested.Get("First Appearance"); !ok {
+									// Setting initial first for first message per host
+									nested.Set("First Appearance", logDate)
+								}
+								if _, ok := nested.Get("Last Appearance"); !ok {
+									// Setting initial last for first message per host
+									nested.Set("Last Appearance", logDate)
+								}
+							}
+						}
+					}
+				} else {
+					nested := v.(cmap.ConcurrentMap)
+					if v, ok := nested.Get(logMessage); !ok {
+						nested.Set(logMessage, cmap.New())
+						if v, ok := nested.Get(logMessage); ok {
+							nested := v.(cmap.ConcurrentMap)
+							if _, ok := nested.Get("Count"); !ok {
+								// Setting initial count for the rest of the messages
+								nested.Set("Count", 1)
+							}
+							if _, ok := nested.Get("Process Name"); !ok {
+								// Setting process name for first message per host
+								nested.Set("Process Name", logProcessName)
+							}
+							if _, ok := nested.Get("First Appearance"); !ok {
+								// Setting initial first for the rest of the messages
+								nested.Set("First Appearance", logDate)
+							}
+							if _, ok := nested.Get("Last Appearance"); !ok {
+								// Setting initial last for the rest of the messages
+								nested.Set("Last Appearance", logDate)
+							}
+						}
+					} else {
+						nested := v.(cmap.ConcurrentMap)
+						if v, ok := nested.Get("Count"); ok {
+							tmp := v.(int)
+							nested.Set("Count", tmp+1)
+						}
+						if v, ok := nested.Get("Last Appearance"); ok {
+							lastAppearance := v.(string)
+							lastAppearanceTime, _ := time.Parse("Jan 2 15:04:05", lastAppearance)
+							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
+
+							if logDateTime.After(lastAppearanceTime) {
+								nested.Set("Last Appearance", logDate)
+							}
+						}
+						if v, ok := nested.Get("First Appearance"); ok {
+							firstAppearance := v.(string)
+							firstAppearanceTime, _ := time.Parse("Jan 2 15:04:05", firstAppearance)
+							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
+
+							if logDateTime.Before(firstAppearanceTime) {
+								nested.Set("First Appearance", logDate)
+							}
+						}
+					}
+				}
 			}
 		} else {
 			return
@@ -329,6 +461,84 @@ func FilterLog(makeMap cmap.ConcurrentMap, processName, filter string, priority 
 				fmt.Println(Blue + logDate + Reset + " " + Cyan + logHostname + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
 			} else {
 				fmt.Println(Blue + logDate + Reset + " " + Yellow + logProcessName + Reset + " " + logMessage)
+			}
+			if analysis {
+				if v, ok := analysisDataMap.Get(logHostname); !ok {
+					analysisDataMap.Set(logHostname, cmap.New())
+					if v, ok := analysisDataMap.Get(logHostname); ok {
+						nested := v.(cmap.ConcurrentMap)
+						if _, ok := nested.Get(logMessage); !ok {
+							nested.Set(logMessage, cmap.New())
+							if v, ok := nested.Get(logMessage); ok {
+								nested := v.(cmap.ConcurrentMap)
+								if _, ok := nested.Get("Count"); !ok {
+									// Setting initial count for first message per host
+									nested.Set("Count", 1)
+								}
+								if _, ok := nested.Get("Process Name"); !ok {
+									// Setting process name for first message per host
+									nested.Set("Process Name", logProcessName)
+								}
+								if _, ok := nested.Get("First Appearance"); !ok {
+									// Setting initial first for first message per host
+									nested.Set("First Appearance", logDate)
+								}
+								if _, ok := nested.Get("Last Appearance"); !ok {
+									// Setting initial last for first message per host
+									nested.Set("Last Appearance", logDate)
+								}
+							}
+						}
+					}
+				} else {
+					nested := v.(cmap.ConcurrentMap)
+					if v, ok := nested.Get(logMessage); !ok {
+						nested.Set(logMessage, cmap.New())
+						if v, ok := nested.Get(logMessage); ok {
+							nested := v.(cmap.ConcurrentMap)
+							if _, ok := nested.Get("Count"); !ok {
+								// Setting initial count for the rest of the messages
+								nested.Set("Count", 1)
+							}
+							if _, ok := nested.Get("Process Name"); !ok {
+								// Setting process name for first message per host
+								nested.Set("Process Name", logProcessName)
+							}
+							if _, ok := nested.Get("First Appearance"); !ok {
+								// Setting initial first for the rest of the messages
+								nested.Set("First Appearance", logDate)
+							}
+							if _, ok := nested.Get("Last Appearance"); !ok {
+								// Setting initial last for the rest of the messages
+								nested.Set("Last Appearance", logDate)
+							}
+						}
+					} else {
+						nested := v.(cmap.ConcurrentMap)
+						if v, ok := nested.Get("Count"); ok {
+							tmp := v.(int)
+							nested.Set("Count", tmp+1)
+						}
+						if v, ok := nested.Get("Last Appearance"); ok {
+							lastAppearance := v.(string)
+							lastAppearanceTime, _ := time.Parse("Jan 2 15:04:05", lastAppearance)
+							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
+
+							if logDateTime.After(lastAppearanceTime) {
+								nested.Set("Last Appearance", logDate)
+							}
+						}
+						if v, ok := nested.Get("First Appearance"); ok {
+							firstAppearance := v.(string)
+							firstAppearanceTime, _ := time.Parse("Jan 2 15:04:05", firstAppearance)
+							logDateTime, _ := time.Parse("Jan 2 15:04:05", logDate)
+
+							if logDateTime.Before(firstAppearanceTime) {
+								nested.Set("First Appearance", logDate)
+							}
+						}
+					}
+				}
 			}
 		} else {
 			return

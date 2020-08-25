@@ -28,15 +28,15 @@ func init() {
 	//	"\nFor example a.log,b.log,c.log")
 	parseCmd.Flags().StringVarP(&fileName, "file", "f", "", "Location of the logging file.")
 	parseCmd.Flags().StringVarP(&filter, "filter", "F", "", "Filter output by message.")
-	parseCmd.Flags().StringVarP(&sinceTime, "since", "S", "" ,"Shows entries newer than the specified date. " +
+	parseCmd.Flags().StringVarP(&sinceTime, "since", "S", "" ,"Show entries newer than the specified date. " +
 		"Date should be of the format \"Aug 5 17:58:06\".")
-	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Shows entries older than the specified date. " +
+	parseCmd.Flags().StringVarP(&untilTime, "until", "U","" ,"Show entries older than the specified date. " +
 		"Date should be of the format \"Aug 12 05:14:42\".")
 	parseCmd.Flags().StringVarP(&processName, "process", "P", "", "Show messages for the specified process.")
 	parseCmd.Flags().IntVarP(&priority, "priority", "p", 5, "Filter output by message priority." +
 		"\"fatal\" (1), \"error\" (2), \"warning\" (3), \"info\" (4), \"debug\" (5).")
 	parseCmd.Flags().BoolVarP(&showHostname, "show-hostname", "H", false, "Show hostname along the messages.")
-	parseCmd.Flags().BoolVarP(&analysis, "analysis", "A", false, "Run analysis on the specified date and logfile.")
+	parseCmd.Flags().BoolVarP(&analysis, "summary", "s", false, "Show executive summary.")
 	parseCmd.Flags().BoolVarP(&ignoreErrors, "ignore-errors", "I", false, "Ignore parsing errors.")
 	parseCmd.MarkFlagRequired("file")
 
