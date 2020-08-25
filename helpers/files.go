@@ -254,7 +254,10 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	// crond
 	crondTypeI := regexp.MustCompile(`^(PAM adding)`)
 	crondTypeW := regexp.MustCompile(`^(PAM unable to dlopen)`)
-
+	// auditd
+	auditdTypeW := regexp.MustCompile(`^(dispatch err \(pipe full\) event lost)`)
+	auditdTypeE := regexp.MustCompile(`^(dispatch error reporting limit reached)`)
+	auditdTypeI := regexp.MustCompile(`^(Audit daemon rotating log files)`)
 	// etcd
 	etcdTypeW := regexp.MustCompile(`^(health check for peer.*connect:.*connection refused)`)
 	// sssd_be
@@ -265,14 +268,24 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		`Accepted publickey|Received disconnect|Disconnected|User child is on|pam_unix)`)
 	// podman
 	podmanTypeI := regexp.MustCompile(`^(container)`)
-
+	// auoms
+	auomsTypeI := regexp.MustCompile(`^(AuditRulesMonitor: Found desired|AuditRulesMonitor: augenrules succeeded|` +
+		`AuditRulesMonitor: augenrules appears to be in-use|Output.*Connecting|Output.*Connected)`)
+	auomsTypeE := regexp.MustCompile(`^(Output.*Connection lost)`)
+	// anacron
+	anacronTypeI := regexp.MustCompile(`^(Anacron started|Will run job|Jobs will be executed|Normal exit|Job.*terminated|Job.*started)`)
+	// kernel
+	kernelTypeI := regexp.MustCompile(`^(XFS.*Ending clean mount|XFS.*Mounting V5 Filesystem|XFS.* Unmounting Filesystem|` +
+		`SELinux: mount invalid.|device.*entered promiscuous mode)`)
 	// podlog process
 	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-/._]+):.*`)
 	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-/._]+):`)
-
+	// stunel
+	stunnelTypeE := regexp.MustCompile(`^(LOG3.*SSL_accept: Peer suddenly disconnected)`)
 	// NetworkManager
 	networkManagerTypeI := regexp.MustCompile(`^(<info>)`)
-
+	// mutlipathd
+	multipathdTypeI := regexp.MustCompile(`^(dm.*remove map \(uevent\)|dm.*devmap not registered, can't remove)`)
 	// global messages
 	informationalMessage := regexp.MustCompile(`^\[32mINFO`)
 	// warningMessage := regexp.MustCompile(`^WARNING`)
@@ -298,16 +311,37 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	if logProcessName == "etcd" {
 		logMessage = etcdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
 	}
+	if logProcessName == "auditd" {
+		logMessage = auditdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = auditdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
+		logMessage = auditdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
 	if logProcessName == "dhclient" {
 		logMessage = dhclientTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
+	if logProcessName == "anacron" {
+		logMessage = anacronTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
+	if logProcessName == "stunnel" {
+		logMessage = stunnelTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
+	}
+	if logProcessName == "auoms" {
+		logMessage = auomsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = auomsTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
 	}
 	if logProcessName == "NetworkManager" {
 		logMessage = networkManagerTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 
 	}
+	if logProcessName == "multipathd" {
+		logMessage = multipathdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
 	if logProcessName == "crond" {
 		logMessage = crondTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+	}
+	if logProcessName == "kernel" {
+		logMessage = kernelTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 	}
 	if logProcessName == "sshd" {
 		logMessage = sshdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
