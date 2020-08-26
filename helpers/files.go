@@ -149,7 +149,7 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 				if addYear {
 					year := time.Now().UTC().Year()
 					sinceTime = sinceTime.AddDate(year,0, 0)
-					untilTime = sinceTime.AddDate(year,0, 0)
+					untilTime = untilTime.AddDate(year,0, 0)
 					addYear = false
 				}
 
@@ -186,7 +186,6 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 					}
 				}
 			}
-
 			if logCreationTime.After(sinceTime) && logCreationTime.Before(untilTime) {
 				FilterLog(makeMap, analysisDataMap, processName, filter, priority, analysis, showHostname, podLogs)
 			}
@@ -218,6 +217,12 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	// podman (remove date/time+stamp (rcernin))
 	podmanDateTime := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\.[0-9]+\s+[+-][0-9]+\s+UTC` +
 		`\s+m=[+-][0-9]+\.[0-9]+\s+`)
+	// crio
+	crioDateTime := regexp.MustCompile(`time="[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?Z"\s+`)
+	// podlogs extra date
+	podlogsDateTime := regexp.MustCompile(`^([0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?Z\|[0-9]+\|)`)
+	podlogsTypeI := regexp.MustCompile(`^(.*\|INFO\|)`)
+	podlogsTypeW := regexp.MustCompile(`^(.*\|WARN\|)`)
 
 	// hyperkube (remove date/time+stamp (rcernin))
 	hyperkubeDateTime := regexp.MustCompile(
@@ -242,10 +247,12 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	hyperkubeTypeIn := regexp.MustCompile(`^(,StartedAt|, Header)`)
 
 	// systemd (replace info, error messages)
-	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Removed|New session|.*Consumed)`)
+	systemdTypeI := regexp.MustCompile(`^(Started|Starting|Created|Stopping|Stopped|Removed|New session|.*Consumed|` +
+		`Configuration file.*Proceeding anyway.)`)
 	systemdTypeF := regexp.MustCompile(`^(Failed)`)
-	systemdTypeE := regexp.MustCompile(`^(.*Main process exited|.*Failed with result)`)
-
+	systemdTypeE := regexp.MustCompile(`^(.*Main process exited|.*Failed with result|.*.service entered failed state.|` +
+		`.*service\sfailed.|.*.service: main process exited.*)`)
+	systemdTypeW := regexp.MustCompile(`^(.*timed out. Killing.)`)
 	// dhclient (replace info, error message)
 	dhclientTypeI := regexp.MustCompile(`^(DHCPREQUEST|DHCPACK|bound to)`)
 
@@ -268,10 +275,16 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		`Accepted publickey|Received disconnect|Disconnected|User child is on|pam_unix)`)
 	// podman
 	podmanTypeI := regexp.MustCompile(`^(container)`)
+	// crio
+	crioTypeI := regexp.MustCompile(`^(level=info)`)
+	crioTypeE := regexp.MustCompile(`^(level=error)`)
+	crioTypeW := regexp.MustCompile(`^(level=warning)`)
 	// auoms
 	auomsTypeI := regexp.MustCompile(`^(AuditRulesMonitor: Found desired|AuditRulesMonitor: augenrules succeeded|` +
 		`AuditRulesMonitor: augenrules appears to be in-use|Output.*Connecting|Output.*Connected)`)
 	auomsTypeE := regexp.MustCompile(`^(Output.*Connection lost)`)
+	// oci-systemd-hook
+	ociSystemHookTypeD := regexp.MustCompile(`^(.*<debug>.*)`)
 	// anacron
 	anacronTypeI := regexp.MustCompile(`^(Anacron started|Will run job|Jobs will be executed|Normal exit|Job.*terminated|Job.*started)`)
 	// kernel
@@ -291,14 +304,24 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	// warningMessage := regexp.MustCompile(`^WARNING`)
 	errorMessage := regexp.MustCompile(`^\[31mERROR`)
 	fatalMessage := regexp.MustCompile(`^\[35mFATAL`)
-	debugMessage := regexp.MustCompile(`^DEBUG`)
+	debugMessage := regexp.MustCompile(`^\[37mDEBUG`)
 
 	// Filter out Date + Time+stamp on each line
 	// because we keep the system Date + Time+stamp
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
 		logMessage = podmanTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-
+	}
+	if logProcessName == "crio" {
+		logMessage = crioDateTime.ReplaceAllString(logMessage, "")
+		logMessage = crioTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
+		logMessage = crioTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
+		logMessage = crioTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
+	}
+	if podLogs {
+		logMessage = podlogsDateTime.ReplaceAllString(logMessage, "")
+		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
 	}
 	if logProcessName == "systemd" ||
 		logProcessName == "systemd-logind" {
@@ -306,10 +329,13 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
 		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ${1}")
 		logMessage = systemdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
-
+		logMessage = systemdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
 	}
 	if logProcessName == "etcd" {
 		logMessage = etcdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+	}
+	if logProcessName == "oci-systemd-hook" {
+		logMessage = ociSystemHookTypeD.ReplaceAllString(logMessage, Gray + "DEBUG" + Reset + " ${1}")
 	}
 	if logProcessName == "auditd" {
 		logMessage = auditdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
