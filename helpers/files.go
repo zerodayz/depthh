@@ -105,7 +105,7 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 	logsSlice := strings.Split(logs, "\n")
 	stringPool.Put(logs)
 
-	chunkSize := 4000
+	chunkSize := 50000
 	n := len(logsSlice)
 	noOfThread := n / chunkSize
 
@@ -219,6 +219,15 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		`\s+m=[+-][0-9]+\.[0-9]+\s+`)
 	// crio
 	crioDateTime := regexp.MustCompile(`time="[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?Z"\s+`)
+	// openstack (remove date)
+	//  2020-08-25 06:42:44.805 28
+	openstackDateTime := regexp.MustCompile(`[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?\s+[0-9]+\s+`)
+	openstackTypeI := regexp.MustCompile(`^(INFO)`)
+	openstackTypeE := regexp.MustCompile(`^(ERROR)`)
+	openstackTypeW := regexp.MustCompile(`^(WARNING)`)
+	openstackTypeD := regexp.MustCompile(`^(DEBUG)`)
+
+
 	// podlogs extra date
 	podlogsDateTime := regexp.MustCompile(`^([0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?Z\|[0-9]+\|)`)
 	podlogsTypeI := regexp.MustCompile(`^(.*\|INFO\|)`)
@@ -289,7 +298,7 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	anacronTypeI := regexp.MustCompile(`^(Anacron started|Will run job|Jobs will be executed|Normal exit|Job.*terminated|Job.*started)`)
 	// kernel
 	kernelTypeI := regexp.MustCompile(`^(XFS.*Ending clean mount|XFS.*Mounting V5 Filesystem|XFS.* Unmounting Filesystem|` +
-		`SELinux: mount invalid.|device.*entered promiscuous mode)`)
+		`SELinux: mount invalid.|device.*entered promiscuous mode|IN=)`)
 	// podlog process
 	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-/._]+):.*`)
 	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-/._]+):`)
@@ -318,6 +327,25 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		logMessage = crioTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
 		logMessage = crioTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
 	}
+	if logProcessName == "keystone-admin" ||
+		logProcessName == "keystone-public" ||
+		logProcessName == "glance-api" ||
+		logProcessName == "glance-manage" ||
+		logProcessName == "cinder-api" ||
+		logProcessName == "neutron-server" ||
+		logProcessName == "nova-api" ||
+		logProcessName == "nova-api-metadata" ||
+		logProcessName == "nova-conductor" ||
+		logProcessName == "nova-consoleauth" ||
+		logProcessName == "nova-manage" ||
+		logProcessName == "nova-novncproxy" ||
+		logProcessName == "nova-scheduler" {
+		logMessage = openstackDateTime.ReplaceAllString(logMessage, "")
+		logMessage = openstackTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
+		logMessage = openstackTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
+		logMessage = openstackTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
+		logMessage = openstackTypeD.ReplaceAllString(logMessage, Gray + "DEBUG" + Reset + " ")
+	}
 	if podLogs {
 		logMessage = podlogsDateTime.ReplaceAllString(logMessage, "")
 		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
@@ -341,6 +369,11 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		logMessage = auditdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
 		logMessage = auditdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
 		logMessage = auditdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+	}
+	if logProcessName == "dockerd-current" {
+		logMessage = podlogsDateTime.ReplaceAllString(logMessage, "")
+		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
 	}
 	if logProcessName == "dhclient" {
 		logMessage = dhclientTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
