@@ -115,24 +115,23 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 
 	makeMap := cmap.New()
 
-
 	for i := 0; i < (noOfThread); i++ {
-		for i := i*chunkSize; i < int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice)))); i++ {
+		for i := i * chunkSize; i < int(math.Min(float64((i+1)*chunkSize), float64(len(logsSlice)))); i++ {
 			text := logsSlice[i]
 			if len(text) == 0 {
 				continue
 			}
 			podsLogLine := regexp.MustCompile(`^(?P<Date>[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+\.[0-9]+Z)\s+` +
-					`([0-9]+-[0-9]+-[0-9]+\s[0-9]+:[0-9]+:[0-9]+.[0-9]+\s+)?` +
-					`(?P<Message>.*)`)
+				`([0-9]+-[0-9]+-[0-9]+\s[0-9]+:[0-9]+:[0-9]+.[0-9]+\s+)?` +
+				`(?P<Message>.*)`)
 			systemLogLine := regexp.MustCompile(`^(?P<Date>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+[0-9]+` +
-					`\s+[0-9]+:[0-9]+:[0-9]+)` +
-					`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
-					`\s+(?P<ProcessName>[0-9A-Za-z\._()/\-]*)` +
-					`(\[)?` +
-					`(?P<ProcessPID>[0-9]+)?` +
-					`(\])?:` +
-					`\s+(?P<Message>.*)`)
+				`\s+[0-9]+:[0-9]+:[0-9]+)` +
+				`\s+(?P<Hostname>[0-9A-Za-z\.\-]*)` +
+				`\s+(?P<ProcessName>[0-9A-Za-z\._()/\-]*)` +
+				`(\[)?` +
+				`(?P<ProcessPID>[0-9]+)?` +
+				`(\])?:` +
+				`\s+(?P<Message>.*)`)
 
 			if systemLogLine.MatchString(text) {
 				logLine = systemLogLine
@@ -148,8 +147,8 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 				logLine = podsLogLine
 				if addYear {
 					year := time.Now().UTC().Year()
-					sinceTime = sinceTime.AddDate(year,0, 0)
-					untilTime = untilTime.AddDate(year,0, 0)
+					sinceTime = sinceTime.AddDate(year, 0, 0)
+					untilTime = untilTime.AddDate(year, 0, 0)
 					addYear = false
 				}
 
@@ -165,7 +164,6 @@ func ProcessChunk(chunk []byte, analysisDataMap cmap.ConcurrentMap, linesPool, s
 					fmt.Println(Red + "Unable to parse text:\n " + text + Reset)
 				}
 			}
-
 
 			if tmp, ok := makeMap.Get("Date"); ok {
 				logCreationTimeString = tmp.(string)
@@ -206,7 +204,7 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		logDate = tmp.(string)
 	}
 	if tmp, ok := makeMap.Get("Hostname"); ok {
-			logHostname = tmp.(string)
+		logHostname = tmp.(string)
 	}
 	if tmp, ok := makeMap.Get("ProcessName"); ok {
 		logProcessName = tmp.(string)
@@ -226,7 +224,6 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	openstackTypeE := regexp.MustCompile(`^(ERROR)`)
 	openstackTypeW := regexp.MustCompile(`^(WARNING)`)
 	openstackTypeD := regexp.MustCompile(`^(DEBUG)`)
-
 
 	// podlogs extra date
 	podlogsDateTime := regexp.MustCompile(`^([0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+(\.[0-9]+)?Z\|[0-9]+\|)`)
@@ -319,13 +316,13 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	// because we keep the system Date + Time+stamp
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
-		logMessage = podmanTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = podmanTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "crio" {
 		logMessage = crioDateTime.ReplaceAllString(logMessage, "")
-		logMessage = crioTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
-		logMessage = crioTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
-		logMessage = crioTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
+		logMessage = crioTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ")
+		logMessage = crioTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ")
+		logMessage = crioTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ")
 	}
 	if logProcessName == "keystone-admin" ||
 		logProcessName == "keystone-public" ||
@@ -341,75 +338,75 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		logProcessName == "nova-novncproxy" ||
 		logProcessName == "nova-scheduler" {
 		logMessage = openstackDateTime.ReplaceAllString(logMessage, "")
-		logMessage = openstackTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
-		logMessage = openstackTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
-		logMessage = openstackTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
-		logMessage = openstackTypeD.ReplaceAllString(logMessage, Gray + "DEBUG" + Reset + " ")
+		logMessage = openstackTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ")
+		logMessage = openstackTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ")
+		logMessage = openstackTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ")
+		logMessage = openstackTypeD.ReplaceAllString(logMessage, Gray+"DEBUG"+Reset+" ")
 	}
 	if podLogs {
 		logMessage = podlogsDateTime.ReplaceAllString(logMessage, "")
-		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
 	}
 	if logProcessName == "systemd" ||
 		logProcessName == "systemd-logind" {
 		// systemd ()
-		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ${1}")
-		logMessage = systemdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
-		logMessage = systemdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = systemdTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = systemdTypeF.ReplaceAllString(logMessage, Purple+"FATAL"+Reset+" ${1}")
+		logMessage = systemdTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ${1}")
+		logMessage = systemdTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
 	}
 	if logProcessName == "etcd" {
-		logMessage = etcdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = etcdTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
 	}
 	if logProcessName == "oci-systemd-hook" {
-		logMessage = ociSystemHookTypeD.ReplaceAllString(logMessage, Gray + "DEBUG" + Reset + " ${1}")
+		logMessage = ociSystemHookTypeD.ReplaceAllString(logMessage, Gray+"DEBUG"+Reset+" ${1}")
 	}
 	if logProcessName == "auditd" {
-		logMessage = auditdTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
-		logMessage = auditdTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
-		logMessage = auditdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = auditdTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
+		logMessage = auditdTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ${1}")
+		logMessage = auditdTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "dockerd-current" {
 		logMessage = podlogsDateTime.ReplaceAllString(logMessage, "")
-		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = podlogsTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = podlogsTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
 	}
 	if logProcessName == "dhclient" {
-		logMessage = dhclientTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = dhclientTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "anacron" {
-		logMessage = anacronTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = anacronTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "stunnel" {
-		logMessage = stunnelTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
+		logMessage = stunnelTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ${1}")
 	}
 	if logProcessName == "auoms" {
-		logMessage = auomsTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-		logMessage = auomsTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ${1}")
+		logMessage = auomsTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = auomsTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ${1}")
 	}
 	if logProcessName == "NetworkManager" {
-		logMessage = networkManagerTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = networkManagerTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 
 	}
 	if logProcessName == "multipathd" {
-		logMessage = multipathdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = multipathdTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "crond" {
-		logMessage = crondTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
-		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ${1}")
+		logMessage = crondTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
 	}
 	if logProcessName == "kernel" {
-		logMessage = kernelTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = kernelTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "sshd" {
-		logMessage = sshdTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = sshdTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "sssd_be" {
-		logMessage = sssdbeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = sssdbeTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "dnsmasq" {
-		logMessage = dnsmasqTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = dnsmasqTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "hyperkube" ||
 		logProcessName == "atomic-openshift-master-api" ||
@@ -420,11 +417,11 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		// hyperkube (remove un-needed information from informational messages (rcernin))
 		logMessage = hyperkubeInfoFilter.ReplaceAllString(logMessage, "${1}${2}${3}")
 		// hyperkube (replace IWEF with INFO/WARN/ERR/FATAL)
-		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
-		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
-		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
-		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ")
-		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ")
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ")
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ")
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple+"FATAL"+Reset+" ")
+		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 
 	if podLogs {
@@ -436,11 +433,11 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		} else {
 			logProcessName = ""
 		}
-		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ")
-		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan + "WARNING" + Reset + " ")
-		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red + "ERROR" + Reset + " ")
-		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple + "FATAL" + Reset + " ")
-		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green + "INFO" + Reset + " ${1}")
+		logMessage = hyperkubeTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ")
+		logMessage = hyperkubeTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ")
+		logMessage = hyperkubeTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ")
+		logMessage = hyperkubeTypeF.ReplaceAllString(logMessage, Purple+"FATAL"+Reset+" ")
+		logMessage = hyperkubeTypeIn.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 
 	if priority == 5 {
@@ -456,16 +453,16 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 		}
 		// priority 2 means error, do not show warning, info and debug messages
 	} else if priority == 2 {
-		if ! (fatalMessage.MatchString(logMessage) || errorMessage.MatchString(logMessage)) {
+		if !(fatalMessage.MatchString(logMessage) || errorMessage.MatchString(logMessage)) {
 			return
 		}
 		// priority 1 means fatal, do not show error, warning, info and debug messages
 	} else if priority == 1 {
-		if ! fatalMessage.MatchString(logMessage) {
+		if !fatalMessage.MatchString(logMessage) {
 			return
 		}
 	}
-	logSlice := strings.SplitN(logMessage, " ",2)
+	logSlice := strings.SplitN(logMessage, " ", 2)
 
 	if len(logSlice) >= 2 {
 		if processNameCompiled.MatchString(logProcessName) &&
