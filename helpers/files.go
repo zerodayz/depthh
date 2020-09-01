@@ -230,6 +230,9 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	podlogsTypeI := regexp.MustCompile(`^(.*\|INFO\|)`)
 	podlogsTypeW := regexp.MustCompile(`^(.*\|WARN\|)`)
 
+	// journal
+	journalDateTime := regexp.MustCompile(`^[0-9]+-[0-9]+-[0-9]+\s+[0-9]+:[0-9]+:[0-9]+\s+[+-][0-9]+\s+`)
+	journalTypeW := regexp.MustCompile(`^(\[warn\]:\s+)`)
 	// hyperkube (remove date/time+stamp (rcernin))
 	hyperkubeDateTime := regexp.MustCompile(
 		// 0805 17:54:15.628339
@@ -261,7 +264,9 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	systemdTypeW := regexp.MustCompile(`^(.*timed out. Killing.)`)
 	// dhclient (replace info, error message)
 	dhclientTypeI := regexp.MustCompile(`^(DHCPREQUEST|DHCPACK|bound to)`)
-
+	// kernel
+	kernelTypeE := regexp.MustCompile(`^(.*MAC addr.*has been set by PF, cannot delete it for VF|.*failed opcode 11|.* TX driver issue detected)`)
+	kernelTypeW := regexp.MustCompile(`^(.*Unprivileged VF|.*Reset warning received|.*still in reset)`)
 	// dnsmasq
 	dnsmasqTypeI := regexp.MustCompile(`^(using nameserver|setting upstream servers)`)
 	// crond
@@ -295,7 +300,7 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	anacronTypeI := regexp.MustCompile(`^(Anacron started|Will run job|Jobs will be executed|Normal exit|Job.*terminated|Job.*started)`)
 	// kernel
 	kernelTypeI := regexp.MustCompile(`^(XFS.*Ending clean mount|XFS.*Mounting V5 Filesystem|XFS.* Unmounting Filesystem|` +
-		`SELinux: mount invalid.|device.*entered promiscuous mode|IN=)`)
+		`SELinux: mount invalid.|device.*entered promiscuous mode|IN=|ll header|IPv4: martian source|.*Scheduling reset task|.*Use PF Control I/F)`)
 	// podlog process
 	podLogsProcessName := regexp.MustCompile(`[A-Z]+\s+\|\s+([A-Za-z0-9\-/._]+):.*`)
 	podLogsRemoveProcessName := regexp.MustCompile(`\s+\|\s+([A-Za-z0-9\-/._]+):`)
@@ -317,6 +322,16 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	if logProcessName == "podman" {
 		logMessage = podmanDateTime.ReplaceAllString(logMessage, "")
 		logMessage = podmanTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+	}
+	if logProcessName == "journal" {
+		logMessage = journalDateTime.ReplaceAllString(logMessage, "")
+		logMessage = journalTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ")
+	}
+	if logProcessName == "kernel" {
+		logMessage = kernelTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
+		logMessage = kernelTypeE.ReplaceAllString(logMessage, Red+"ERROR"+Reset+" ${1}")
+		logMessage = kernelTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
+
 	}
 	if logProcessName == "crio" {
 		logMessage = crioDateTime.ReplaceAllString(logMessage, "")
@@ -395,9 +410,6 @@ func FilterLog(makeMap, analysisDataMap cmap.ConcurrentMap, processName, filter 
 	if logProcessName == "crond" {
 		logMessage = crondTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 		logMessage = crondTypeW.ReplaceAllString(logMessage, Cyan+"WARNING"+Reset+" ${1}")
-	}
-	if logProcessName == "kernel" {
-		logMessage = kernelTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
 	}
 	if logProcessName == "sshd" {
 		logMessage = sshdTypeI.ReplaceAllString(logMessage, Green+"INFO"+Reset+" ${1}")
